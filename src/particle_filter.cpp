@@ -37,7 +37,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    *   (and others in this file).
    */
   std::default_random_engine gen; //random engine initialized
-  num_particles = 1000;  // TODO: Set the number of particles
+  num_particles = 20;  // TODO: Set the number of particles
   
   // create normal distribution in x, y, theta
   normal_distribution<double> dist_x(x, std[0]);
@@ -54,6 +54,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     p.theta = dist_theta(gen);
     p.weight = 1.0; // particle weights initialized to 1
     particles.push_back (p); // particle appended to vector of particles
+    weights.push_back(p.weight);
   }
   is_initialized = true; // particle filter initialized
 }
@@ -70,9 +71,9 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
   std::default_random_engine gen; //random engine initialized
   
   // create normal distribution in x, y, theta for zero-mean noise addition to motion
-  normal_distribution<double> dist_x(0, std_pos[0]);
-  normal_distribution<double> dist_y(0, std_pos[1]);
-  normal_distribution<double> dist_theta(0, std_pos[2]);
+  normal_distribution<double> dist_x(0.0, std_pos[0]);
+  normal_distribution<double> dist_y(0.0, std_pos[1]);
+  normal_distribution<double> dist_theta(0.0, std_pos[2]);
   
   for (int index = 0; index < num_particles; ++index)
   {
@@ -144,7 +145,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
   double sig_x = std_landmark[0];
   double sig_y = std_landmark[1];
   double gauss_norm = 1 / (2 * M_PI * sig_x * sig_y);
-  //double weight_sum = 0.0;
+  double weight_sum = 0.0;
   
   // Loop through each particle while transforming observations to map -co-ordinates, associating data and calculating weight
   for (int index_p = 0; index_p < num_particles; ++index_p)
@@ -188,6 +189,9 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     vector<double> sense_x;
 	vector<double> sense_y;
     
+    // Reset particle weight to 1
+    particles[index_p].weight = 1.0;
+    
     // Calculate weight of particle
     double map_x, map_y, mu_x, mu_y, exponent;
     for (unsigned int index_TOBS = 0; index_TOBS < Transformed_OBS.size(); ++index_TOBS)
@@ -217,7 +221,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     }
     
     // Sum of weights
-    //weight_sum = weight_sum + particles[index_p].weight;
+    weight_sum = weight_sum + particles[index_p].weight;
+    weights[index_p] = particles[index_p].weight;
     
     // Set association for debugging
     SetAssociations(particles[index_p], association, sense_x, sense_y);
@@ -225,10 +230,11 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
   }
   
   // Normalize particle weights
-  /*for (int i = 0; i < num_particles; ++i)
+  for (int i = 0; i < num_particles; ++i)
   {
     particles[i].weight = particles[i].weight/weight_sum;
-  }*/
+    weights[i] = particles[i].weight;
+  }
 }
 
 void ParticleFilter::resample() {
@@ -246,9 +252,10 @@ void ParticleFilter::resample() {
   double weight_max = numeric_limits<double>::min(); // Minimum finite value representable with double type
   for (int index_p = 0; index_p < num_particles; ++index_p)
   {
-    if (particles[index_p].weight > weight_max)
+    if (weights[index_p] > weight_max)
     {
-      weight_max = particles[index_p].weight;
+      //weight_max = particles[index_p].weight;
+      weight_max = weights[index_p];
     }
   }
   
@@ -258,7 +265,7 @@ void ParticleFilter::resample() {
   
   // Create uniform distribution to draw uniformly between 0 and (2* maximum weight of particles)
   // http://www.cplusplus.com/reference/random/uniform_real_distribution/
-  uniform_real_distribution<double> distw(0.0, 2.0 * weight_max);
+  uniform_real_distribution<double> distw(0.0, weight_max);
   
   // Starting index drawn uniformly from index of particles
   int index_particle = distp(gen);
@@ -272,10 +279,10 @@ void ParticleFilter::resample() {
   // Weight representation circle
   for (int index_new = 0; index_new < num_particles; ++index_new)
   {
-    beta = beta + distw(gen);
-    while (particles[index_particle].weight > beta)
+    beta = beta + 2.0 * distw(gen);
+    while (beta > weights[index_particle])
     {
-      beta = beta - particles[index_particle].weight;
+      beta = beta - weights[index_particle];
       index_particle = (index_particle + 1) % num_particles;
     }
     
